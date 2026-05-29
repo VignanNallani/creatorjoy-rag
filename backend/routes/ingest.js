@@ -150,9 +150,16 @@ router.post('/', async (req, res) => {
       path: process.env.CHROMA_URL || "http://localhost:8000"
     });
 
-    // Initialize ChromaDB Collections
-    const chunkCollection = await chromaClient.getOrCreateCollection({ name: "video_chunks" });
-    const metadataCollection = await chromaClient.getOrCreateCollection({ name: "video_metadata" });
+    // Initialize ChromaDB Collections with [0.1] dummy embedding functions to avoid warnings/empty embedding errors
+    const dummyEmbedFn = { generate: async (texts) => texts.map(() => [0.1]) };
+    const chunkCollection = await chromaClient.getOrCreateCollection({ 
+      name: "video_chunks",
+      embeddingFunction: dummyEmbedFn
+    });
+    const metadataCollection = await chromaClient.getOrCreateCollection({ 
+      name: "video_metadata",
+      embeddingFunction: dummyEmbedFn
+    });
 
     // Clean up existing records for videoA and videoB from ChromaDB to ensure clean state
     try {
@@ -191,6 +198,11 @@ router.post('/', async (req, res) => {
       });
 
       const embeddings = embedResponse.embeddings;
+
+      // Print first embedding length to verify it is populated
+      if (embeddings && embeddings.length > 0) {
+        console.log(`First chunk embedding length: ${embeddings[0].length}`);
+      }
 
       // Store chunks in ChromaDB
       await chunkCollection.add({
