@@ -11,6 +11,8 @@
   "license": "ISC",
   "dependencies": {
     "@langchain/cohere": "^1.0.5",
+    "@langchain/community": "^1.1.29",
+    "@langchain/core": "^1.1.48",
     "@langchain/google-genai": "^2.1.31",
     "axios": "^1.16.1",
     "chromadb": "^3.4.3",
