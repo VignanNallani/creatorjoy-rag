@@ -14,6 +14,7 @@
     "@langchain/google-genai": "^2.1.31",
     "axios": "^1.16.1",
     "chromadb": "^3.4.3",
+    "cohere-ai": "^8.0.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
