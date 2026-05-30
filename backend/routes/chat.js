@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { ChatGoogleGenerativeAI } = require("@langchain/google-genai");
+const axios = require('axios');
 const { CohereEmbeddings } = require("@langchain/cohere");
 const { Chroma } = require("@langchain/community/vectorstores/chroma");
 
@@ -134,37 +134,65 @@ ${historyText || "No previous history."}
 Human: ${message}
 AI:`;
 
-    // 7. Initialize ChatGoogleGenerativeAI (gemini-1.5-flash)
-    if (!process.env.GEMINI_API_KEY) {
-      throw new Error("Missing GEMINI_API_KEY environment variable.");
+    // 7. Call Groq with direct API call
+    if (!process.env.GROQ_API_KEY) {
+      throw new Error("Missing GROQ_API_KEY environment variable.");
     }
-    const model = new ChatGoogleGenerativeAI({
-      model: "gemini-1.5-flash",
-      apiKey: process.env.GEMINI_API_KEY,
-      streaming: true
-    });
 
-    // 8. Stream response via SSE
-    let fullResponseText = "";
-    const stream = await model.stream(systemPrompt);
-
-    for await (const chunk of stream) {
-      const text = chunk.content || "";
-      if (text) {
-        fullResponseText += text;
-        res.write(`data: ${text}\n\n`);
+    const response = await axios.post(
+      "https://api.groq.com/openai/v1/chat/completions",
+      {
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: systemPrompt }],
+        stream: true
+      },
+      {
+        headers: {
+          "Authorization": "Bearer " + process.env.GROQ_API_KEY,
+          "Content-Type": "application/json"
+        },
+        responseType: "stream"
       }
-    }
-
-    // 9. Save exchange to session memory
-    await memory.saveContext(
-      { input: message },
-      { output: fullResponseText }
     );
 
-    // 10. Send the DONE signal
-    res.write("data: [DONE]\n\n");
-    res.end();
+    // 8. Stream the response using SSE and pipe to client
+    let fullResponseText = "";
+    response.data.on("data", chunk => {
+      const lines = chunk.toString().split("\n").filter(l => l.startsWith("data: "));
+      for (const line of lines) {
+        const json = line.replace("data: ", "").trim();
+        if (json === "[DONE]") {
+          return;
+        }
+        try {
+          const parsed = JSON.parse(json);
+          const token = parsed.choices?.[0]?.delta?.content;
+          if (token) {
+            fullResponseText += token;
+            res.write("data: " + token + "\n\n");
+          }
+        } catch(e) {}
+      }
+    });
+
+    response.data.on("end", async () => {
+      try {
+        await memory.saveContext(
+          { input: message },
+          { output: fullResponseText }
+        );
+      } catch (memError) {
+        console.error("Failed to save memory context:", memError);
+      }
+      res.write("data: [DONE]\n\n");
+      res.end();
+    });
+
+    response.data.on("error", error => {
+      console.error("OpenRouter stream error:", error);
+      res.write(`data: Error: ${error.message}\n\n`);
+      res.end();
+    });
 
   } catch (error) {
     console.error("Chat routing error:", error);
