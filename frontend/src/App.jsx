@@ -125,9 +125,13 @@ export default function App() {
             if (token) {
               setMessages((prev) => {
                 const updated = [...prev];
-                const last = updated[updated.length - 1];
+                const lastIdx = updated.length - 1;
+                const last = updated[lastIdx];
                 if (last && last.role === 'ai') {
-                  last.content += token;
+                  updated[lastIdx] = {
+                    ...last,
+                    content: last.content + token
+                  };
                 }
                 return updated;
               });
@@ -139,9 +143,13 @@ export default function App() {
       console.error(error);
       setMessages((prev) => {
         const updated = [...prev];
-        const last = updated[updated.length - 1];
+        const lastIdx = updated.length - 1;
+        const last = updated[lastIdx];
         if (last && last.role === 'ai') {
-          last.content = `Error: ${error.message}`;
+          updated[lastIdx] = {
+            ...last,
+            content: `Error: ${error.message}`
+          };
         }
         return updated;
       });
