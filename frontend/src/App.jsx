@@ -111,13 +111,18 @@ export default function App() {
         
         let lineEnd;
         while ((lineEnd = buffer.indexOf("\n")) !== -1) {
-          const line = buffer.substring(0, lineEnd).trim();
+          let line = buffer.substring(0, lineEnd);
           buffer = buffer.substring(lineEnd + 1);
 
-          if (line.startsWith("data: ")) {
-            const token = line.substring(6).trim();
+          // Strip carriage return for Windows compatibility
+          if (line.endsWith("\r")) {
+            line = line.slice(0, -1);
+          }
 
-            if (token === "[DONE]") {
+          if (line.startsWith("data: ")) {
+            const token = line.substring(6);
+
+            if (token.trim() === "[DONE]") {
               setStreaming(false);
               break;
             }
