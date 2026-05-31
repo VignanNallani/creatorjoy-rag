@@ -167,6 +167,56 @@ def main():
                 else:
                     result["transcript"] = ""
 
+                # Whisper Fallback when no subtitles/closed captions are found
+                if not result["transcript"]:
+                    try:
+                        import tempfile
+                        # Build cross-platform temp path for the audio template and final mp3 file
+                        temp_dir = tempfile.gettempdir()
+                        audio_template = os.path.join(temp_dir, 'instagram_audio.%(ext)s')
+                        audio_mp3_path = os.path.join(temp_dir, 'instagram_audio.mp3')
+                        
+                        # Remove existing temp file if it exists to avoid write blocks
+                        if os.path.exists(audio_mp3_path):
+                            try:
+                                os.remove(audio_mp3_path)
+                            except Exception:
+                                pass
+                                
+                        # Setup yt-dlp options for downloading the audio track
+                        whisper_ydl_opts = {
+                            'format': 'bestaudio/best',
+                            'outtmpl': audio_template,
+                            'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3'}],
+                            'quiet': True,
+                            'no_warnings': True,
+                        }
+                        
+                        # Reuse the cookiefile if it exists in ydl_opts
+                        if 'cookiefile' in ydl_opts:
+                            whisper_ydl_opts['cookiefile'] = ydl_opts['cookiefile']
+                            
+                        # Download the audio
+                        with yt_dlp.YoutubeDL(whisper_ydl_opts) as ydl_whisper:
+                            ydl_whisper.download([url])
+                            
+                        # Transcribe the downloaded audio via OpenAI Whisper (tiny model)
+                        if os.path.exists(audio_mp3_path):
+                            import whisper
+                            model = whisper.load_model("tiny")
+                            whisper_res = model.transcribe(audio_mp3_path)
+                            result["transcript"] = whisper_res.get("text", "")
+                            
+                            # Clean up the temp file after successful transcription
+                            try:
+                                os.remove(audio_mp3_path)
+                            except Exception:
+                                pass
+                    except Exception as whisper_err:
+                        # Graceful fallback: set to empty string if Whisper fails
+                        result["transcript"] = ""
+                        result["whisper_error"] = str(whisper_err)
+
     except Exception as e:
         result["error"] = f"Extraction failed: {str(e)}"
         result["subscriber_count_note"] = "Extraction failed"
