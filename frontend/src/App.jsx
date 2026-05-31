@@ -511,7 +511,9 @@ export default function App() {
               </div>
               <div style={styles.engagementContainer}>
                 <span style={styles.engagementText}>Engagement Rate</span>
-                <span style={styles.engagementVal}>{videoData.videoA.engagement_rate?.toFixed(2)}%</span>
+                <span style={styles.engagementVal}>
+                  {videoData.videoA.view_count === 0 ? "N/A (views unavailable)" : `${videoData.videoA.engagement_rate?.toFixed(2)}%`}
+                </span>
               </div>
             </div>
 
@@ -545,7 +547,9 @@ export default function App() {
               </div>
               <div style={styles.engagementContainer}>
                 <span style={styles.engagementText}>Engagement Rate</span>
-                <span style={styles.engagementVal}>{videoData.videoB.engagement_rate?.toFixed(2)}%</span>
+                <span style={styles.engagementVal}>
+                  {videoData.videoB.view_count === 0 ? "N/A (views unavailable)" : `${videoData.videoB.engagement_rate?.toFixed(2)}%`}
+                </span>
               </div>
             </div>
           </section>
