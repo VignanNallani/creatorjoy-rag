@@ -103,7 +103,7 @@ def main():
         'no_warnings': True,
         'writesubtitles': True,
         'writeautomaticsub': True,
-        'cookiesfrombrowser': ('edge',),
+        'cookiesfrombrowser': ('chrome',),
     }
 
     try:
