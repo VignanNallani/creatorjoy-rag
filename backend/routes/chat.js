@@ -3,6 +3,7 @@ const router = express.Router();
 const axios = require('axios');
 const { CohereEmbeddings } = require("@langchain/cohere");
 const { Chroma } = require("@langchain/community/vectorstores/chroma");
+const { ChromaClient } = require('chromadb');
 
 // High-fidelity custom implementation of ConversationBufferMemory to bypass legacy export paths missing in langchain v1.4.2
 class ConversationBufferMemory {
@@ -118,12 +119,79 @@ router.post('/', async (req, res) => {
       return `[Source Video: ${videoId}, Chunk Index: ${chunkIndex}, Title: "${title}"]\nTranscript Piece: ${doc.pageContent}`;
     }).join("\n\n");
 
+    // 5.5 Fetch Video Metadata from the video_metadata collection in ChromaDB
+    let videoAMetadata = null;
+    let videoBMetadata = null;
+    try {
+      const chromaClient = new ChromaClient({
+        path: process.env.CHROMA_URL || "http://localhost:8000"
+      });
+      const dummyEmbedFn = { generate: async (texts) => texts.map(() => [0.1]) };
+      const metadataCollection = await chromaClient.getOrCreateCollection({ 
+        name: "video_metadata",
+        embeddingFunction: dummyEmbedFn
+      });
+      const storedMetadata = await metadataCollection.get({
+        ids: ["videoA", "videoB"]
+      });
+      if (storedMetadata && storedMetadata.metadatas) {
+        storedMetadata.metadatas.forEach(m => {
+          if (m.video_id === 'videoA') {
+            videoAMetadata = m;
+          } else if (m.video_id === 'videoB') {
+            videoBMetadata = m;
+          }
+        });
+      }
+    } catch (metadataError) {
+      console.warn("Failed to retrieve metadata from ChromaDB:", metadataError.message);
+    }
+
+    let metadataText = "";
+    if (videoAMetadata || videoBMetadata) {
+      metadataText = "--- METADATA COMPARISON ---\n";
+      if (videoAMetadata) {
+        metadataText += `Video A (video_id: videoA):
+- Title: ${videoAMetadata.title || "N/A"}
+- Channel: ${videoAMetadata.channel || "N/A"}
+- Views: ${videoAMetadata.view_count || 0}
+- Likes: ${videoAMetadata.like_count || 0}
+- Comments: ${videoAMetadata.comment_count || 0}
+- Subscriber/Follower Count: ${videoAMetadata.subscriber_count !== null ? videoAMetadata.subscriber_count : 'N/A'}
+- Engagement Rate: ${videoAMetadata.engagement_rate || 0}%
+- Duration: ${videoAMetadata.duration || 0} seconds
+- Upload Date: ${videoAMetadata.upload_date || "N/A"}
+- URL: ${videoAMetadata.url || "N/A"}
+\n`;
+      }
+      if (videoBMetadata) {
+        metadataText += `Video B (video_id: videoB):
+- Title: ${videoBMetadata.title || "N/A"}
+- Channel: ${videoBMetadata.channel || "N/A"}
+- Views: ${videoBMetadata.view_count || 0}
+- Likes: ${videoBMetadata.like_count || 0}
+- Comments: ${videoBMetadata.comment_count || 0}
+- Subscriber/Follower Count: ${videoBMetadata.subscriber_count !== null ? videoBMetadata.subscriber_count : 'N/A'}
+- Engagement Rate: ${videoBMetadata.engagement_rate || 0}%
+- Duration: ${videoBMetadata.duration || 0} seconds
+- Upload Date: ${videoBMetadata.upload_date || "N/A"}
+- URL: ${videoBMetadata.url || "N/A"}
+\n`;
+      }
+      metadataText += "---------------------------\n";
+    }
+
     // 6. Build the prompt template instructing the LLM to cite its sources
     const systemPrompt = `You are a professional video analysis assistant.
 You are comparing and analyzing two videos: Video A (video_id: videoA) and Video B (video_id: videoB).
+
+Here is the exact metadata (views, likes, comments, engagement rates, and other API metrics) for both videos:
+${metadataText || "No metadata available."}
+
 Use the retrieved video transcript chunks below as context to answer the user's message.
 
 For each claim or statement you make, you MUST explicitly cite which video and chunk it comes from (e.g. "[videoA, Chunk 2]" or "[videoB, Chunk 0]"). Keep citations concise and clear.
+If you are answering questions using the metadata metrics listed above, cite them as "[videoA, Metadata]" or "[videoB, Metadata]".
 
 Context:
 ${formattedContext || "No relevant transcript context found for this query."}
