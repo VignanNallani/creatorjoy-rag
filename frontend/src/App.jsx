@@ -5,7 +5,7 @@ const BACKEND_URL = "http://localhost:3001";
 
 export default function App() {
   // Generate session_id once on load using crypto.randomUUID()
-  const [sessionId] = useState(() => crypto.randomUUID());
+  const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
 
   // App States
   const [videoAUrl, setVideoAUrl] = useState("");
@@ -160,6 +160,16 @@ export default function App() {
       });
       setStreaming(false);
     }
+  };
+
+  // Reset handler to compare new videos
+  const handleReset = () => {
+    setVideoAUrl("");
+    setVideoBUrl("");
+    setVideoData(null);
+    setMessages([]);
+    setInputMessage("");
+    setSessionId(crypto.randomUUID());
   };
 
   // Inline premium style rules
@@ -439,46 +449,77 @@ export default function App() {
       </header>
 
       {/* 2. URL Input Section */}
-      <section style={styles.glassCard}>
-        <form onSubmit={handleIngest}>
-          <div style={styles.inputGrid}>
-            <div style={styles.inputWrapper}>
-              <label style={styles.label}>Video A URL (YouTube or Instagram)</label>
-              <input
-                style={styles.input}
-                type="text"
-                placeholder="https://www.youtube.com/watch?v=..."
-                value={videoAUrl}
-                onChange={(e) => setVideoAUrl(e.target.value)}
-                disabled={loading}
-              />
+      {!videoData && (
+        <section style={styles.glassCard}>
+          <form onSubmit={handleIngest}>
+            <div style={styles.inputGrid}>
+              <div style={styles.inputWrapper}>
+                <label style={styles.label}>Video A URL (YouTube or Instagram)</label>
+                <input
+                  style={styles.input}
+                  type="text"
+                  placeholder="https://www.youtube.com/watch?v=..."
+                  value={videoAUrl}
+                  onChange={(e) => setVideoAUrl(e.target.value)}
+                  disabled={loading}
+                />
+              </div>
+              <div style={styles.inputWrapper}>
+                <label style={styles.label}>Video B URL (YouTube or Instagram)</label>
+                <input
+                  style={styles.input}
+                  type="text"
+                  placeholder="https://instagram.com/reel/..."
+                  value={videoBUrl}
+                  onChange={(e) => setVideoBUrl(e.target.value)}
+                  disabled={loading}
+                />
+              </div>
             </div>
-            <div style={styles.inputWrapper}>
-              <label style={styles.label}>Video B URL (YouTube or Instagram)</label>
-              <input
-                style={styles.input}
-                type="text"
-                placeholder="https://instagram.com/reel/..."
-                value={videoBUrl}
-                onChange={(e) => setVideoBUrl(e.target.value)}
-                disabled={loading}
-              />
-            </div>
-          </div>
-          <button style={styles.button} type="submit" disabled={loading}>
-            {loading ? (
-              <>
-                <div className="spinner"></div>
-                Analyzing and Indexing Video Data...
-              </>
-            ) : "Analyze Videos"}
-          </button>
-        </form>
-      </section>
+            <button style={styles.button} type="submit" disabled={loading}>
+              {loading ? (
+                <>
+                  <div className="spinner"></div>
+                  Analyzing and Indexing Video Data...
+                </>
+              ) : "Analyze Videos"}
+            </button>
+          </form>
+        </section>
+      )}
 
       {/* Ingest Success Content */}
       {videoData && (
         <>
+          {/* Analyze New Videos Reset Button */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+            <button
+              onClick={handleReset}
+              style={{
+                background: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                color: '#fca5a5',
+                borderRadius: '12px',
+                padding: '10px 20px',
+                fontSize: '14px',
+                fontWeight: '700',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                boxShadow: '0 4px 12px rgba(239, 68, 68, 0.1)'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.background = 'rgba(239, 68, 68, 0.2)';
+                e.target.style.transform = 'translateY(-1px)';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = 'rgba(239, 68, 68, 0.1)';
+                e.target.style.transform = 'translateY(0)';
+              }}
+            >
+              ← Analyze New Videos
+            </button>
+          </div>
+
           {/* 3. Video Cards Section */}
           <section style={styles.cardGrid}>
             {/* Card Video A */}
