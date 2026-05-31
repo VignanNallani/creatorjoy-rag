@@ -103,8 +103,12 @@ def main():
         'no_warnings': True,
         'writesubtitles': True,
         'writeautomaticsub': True,
-        'cookiesfrombrowser': ('chrome',),
     }
+
+    import os
+    cookie_file = os.path.join(os.path.dirname(__file__), 'instagram_cookies.txt')
+    if os.path.exists(cookie_file):
+        ydl_opts['cookiefile'] = cookie_file
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
