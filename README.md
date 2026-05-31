@@ -52,29 +52,34 @@ the last N exchanges so follow-up questions work naturally.
 ## Stack decisions — the real reasoning
 
 **Node.js over FastAPI**
+
 My strongest area. FastAPI would've been cleaner for the Python 
 embedding pipeline but I'd have spent more time fighting async 
 patterns I don't know well. Node + spawning Python subprocesses 
 was the right call for speed of execution.
 
 **ChromaDB over Pinecone**
+
 Pinecone adds network latency and needs account setup. ChromaDB 
 runs locally with one command. At this scale (prototype, single 
 user) local is faster and free. The trade-off is no concurrent 
 writes — fine for now.
 
 **Groq over GPT-4o**
+
 GPT-4o free tier hit rate limits on my second test run. Groq 
 runs Llama 3.3 70B at ~500 tokens/second for free. The streaming 
 speed makes the chat feel snappy which matters for creator UX.
 
 **Cohere over OpenAI embeddings**
+
 Cohere's embed-english-v3.0 has a separate input_type for 
 documents vs queries. That distinction improves retrieval 
 precision — when you embed a chunk vs when you embed a question, 
 they're treated differently. OpenAI embeddings don't expose that.
 
 **800 char chunks, 100 overlap**
+
 Started at 500. Retrieval was returning half-thoughts — the 
 answer would start mid-sentence with no context. Moved to 800 
 and retrieval got noticeably better. The 100 char overlap 
@@ -82,6 +87,7 @@ ensures nothing meaningful gets cut at a boundary. Could
 probably go to 1000 but didn't want to bloat the context.
 
 **Instagram follower count — graceful null**
+
 Instagram blocks follower count without OAuth. I tried 
 channel_follower_count from yt-dlp metadata — sometimes 
 it's there, usually it's not. Rather than crashing or 
