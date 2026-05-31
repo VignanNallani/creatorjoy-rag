@@ -1,110 +1,167 @@
 # CreatorJoy RAG Analyzer
 
-Built this for the CreatorJoy technical round. Takes two video URLs 
-(YouTube + Instagram Reel), pulls transcripts and metadata, embeds 
-everything into a vector DB, and lets you compare them through a 
-streaming AI chat. Learned ChromaDB and LangChain from scratch while 
-building this.
+Built for the CreatorJoy technical round. Takes a YouTube URL and an 
+Instagram Reel URL, pulls transcripts and metadata from both, embeds 
+everything into ChromaDB, and lets you compare them through a streaming 
+AI chat with source citations and memory across turns.
+
+I learned ChromaDB and LangChain.js from scratch while building this. 
+Took me a while to figure out why the SSE tokens were duplicating — 
+turned out Express was flushing chunks twice. Fixed that. The trim() 
+issue with streamed tokens took embarrassingly long to debug.
+
+---
+
+## Architecture
+
+```
+YouTube URL ─┐                    ┌─ ChromaDB (local vector store)
+             ├─ Python scripts ───┤       tagged: video_id = A or B
+Instagram ───┘   (yt-dlp +        └─ LangChain retriever
+              transcript-api)            │
+                    │                    ▼
+              chunk (800 chars,   Groq llama-3.3-70b
+              100 overlap)        streaming via SSE
+                    │                    │
+              Cohere embed         React frontend
+              1024-dim vectors     (chat panel +
+                                   video cards)
+```
 
 ---
 
 ## What it does
 
-Paste two video URLs, hit Analyze. The backend spawns Python scripts 
-that pull transcripts via youtube-transcript-api and yt-dlp, plus 
-metadata (views, likes, comments, follower count, engagement rate). 
-Transcripts get chunked and embedded using Cohere, stored in ChromaDB 
-tagged with video_id A or B. Then you can ask things like "why did 
-Video A get more engagement?" and get a streamed answer with citations 
-showing exactly which chunk it came from.
+Paste two URLs, hit Analyze. The backend spawns two Python scripts — 
+one for YouTube, one for Instagram. Each script pulls the transcript 
+and metadata (views, likes, comments, follower count, upload date, 
+duration, hashtags). Engagement rate is computed dynamically: 
+(likes + comments) / views × 100.
+
+Transcripts get chunked at 800 characters with 100 char overlap, 
+embedded with Cohere, and stored in ChromaDB tagged with video_id 
+A or B. Then the chat opens — you can ask anything and the RAG 
+retriever pulls the right chunks, streams the answer via SSE, 
+and shows you exactly which video and chunk the answer came from.
+
+Memory persists across turns using a manual buffer. The LLM sees 
+the last N exchanges so follow-up questions work naturally.
 
 ---
 
-## Stack
+## Stack decisions — the real reasoning
 
-| Layer | Tool | Why I picked it |
+**Node.js over FastAPI**
+My strongest area. FastAPI would've been cleaner for the Python 
+embedding pipeline but I'd have spent more time fighting async 
+patterns I don't know well. Node + spawning Python subprocesses 
+was the right call for speed of execution.
+
+**ChromaDB over Pinecone**
+Pinecone adds network latency and needs account setup. ChromaDB 
+runs locally with one command. At this scale (prototype, single 
+user) local is faster and free. The trade-off is no concurrent 
+writes — fine for now.
+
+**Groq over GPT-4o**
+GPT-4o free tier hit rate limits on my second test run. Groq 
+runs Llama 3.3 70B at ~500 tokens/second for free. The streaming 
+speed makes the chat feel snappy which matters for creator UX.
+
+**Cohere over OpenAI embeddings**
+Cohere's embed-english-v3.0 has a separate input_type for 
+documents vs queries. That distinction improves retrieval 
+precision — when you embed a chunk vs when you embed a question, 
+they're treated differently. OpenAI embeddings don't expose that.
+
+**800 char chunks, 100 overlap**
+Started at 500. Retrieval was returning half-thoughts — the 
+answer would start mid-sentence with no context. Moved to 800 
+and retrieval got noticeably better. The 100 char overlap 
+ensures nothing meaningful gets cut at a boundary. Could 
+probably go to 1000 but didn't want to bloat the context.
+
+**Instagram follower count — graceful null**
+Instagram blocks follower count without OAuth. I tried 
+channel_follower_count from yt-dlp metadata — sometimes 
+it's there, usually it's not. Rather than crashing or 
+hardcoding, I set it to null and surface a note in the UI. 
+Pipeline never dies on missing data.
+
+---
+
+## What breaks at 1000 creators/day
+
+| What breaks | Why | Fix |
 |---|---|---|
-| Frontend | React + Vite | Fast to set up, handled SSE streaming cleanly |
-| Backend | Node.js + Express | My strongest area, good for spawning Python processes |
-| Transcript | youtube-transcript-api + yt-dlp | Most reliable free option, no API key needed |
-| Embeddings | Cohere embed-english-v3.0 | Free tier, 1024-dim vectors, built for search |
-| Vector DB | ChromaDB | Runs locally, zero setup, no cost |
-| LLM | Groq llama-3.3-70b-versatile | ~500 tok/s streaming, completely free |
-| Orchestration | LangChain (retriever + prompt) | Handles retrieval chain cleanly |
+| Cohere free tier | 1000 API calls/month limit | BGE-small locally (zero cost) or Cohere paid at $0.10/1M tokens |
+| ChromaDB local | No concurrent writes, single process | Qdrant Cloud or pgvector on Supabase |
+| Python subprocess per request | Forks a new process every time, exhausts CPU fast | BullMQ job queue with worker pool (4-8 workers) |
+| In-memory session storage | Leaks RAM, dies on restart | Redis with TTL keys per session |
+| Groq free tier | Rate limits under sustained load | Keep Groq but add exponential backoff, or self-host Llama on a $50/mo GPU VM |
+
+Cost estimate at scale: BGE-small (free) + Qdrant Cloud (~$25/mo 
+for 1M vectors) + Redis (~$10/mo) + Groq with backoff (free or 
+~$20/mo) = **~$55/month for 1000 creators/day.** That's $0.055 
+per creator session. Hard to beat.
 
 ---
 
-## Why these choices (the honest version)
+## Running locally
 
-**ChromaDB over Pinecone** — Pinecone needs account setup, API keys, 
-and adds network latency. ChromaDB runs locally with one command. 
-At scale I'd move to Qdrant Cloud, but for this ChromaDB was the 
-right call.
+You need Node.js 18+, Python 3.9+, and ChromaDB running.
 
-**Groq over GPT-4o** — GPT-4o free tier hit rate limits immediately. 
-Groq runs Llama 3.3 70B at ~500 tokens/second for free. The streaming 
-speed actually makes the chat feel premium.
+**1. Clone and install**
+```bash
+git clone https://github.com/VignanNallani/creatorjoy-rag
+cd creatorjoy-rag
+```
 
-**Cohere over OpenAI embeddings** — Cohere's embed-english-v3.0 has 
-a separate input_type for documents vs queries which improves retrieval 
-accuracy. Free tier was enough for this.
+**2. Set up environment**
+```bash
+cp .env.example backend/.env
+# Fill in your GROQ_API_KEY and COHERE_API_KEY
+```
 
-**800 character chunks, 100 overlap** — I tested 500 chars first. 
-Retrieval was returning incomplete thoughts — half a sentence with no 
-context. Moved to 800 and it got much better. The 100 char overlap 
-makes sure nothing gets cut at a boundary.
-
-**Instagram follower count** — Instagram blocks this without OAuth. 
-I try channel_follower_count from yt-dlp, if it's missing I set it 
-to null and add a note. Pipeline never crashes, the data just shows 
-as unavailable.
-
----
-
-## At 1000 creators/day — what breaks
-
-- **Cohere free tier** hits limit fast. Fix: BGE-small running locally 
-  (zero cost) or Cohere paid ($0.10/M tokens)
-- **ChromaDB local** can't handle concurrent writes. Fix: Qdrant Cloud 
-  or pgvector on Supabase
-- **Spawning Python processes per request** will exhaust CPU. Fix: 
-  BullMQ job queue with worker pool
-- **In-memory session storage** leaks RAM and dies on restart. Fix: 
-  Redis with TTL keys
-
----
-
-## Running it locally
-
-You need Node.js, Python 3.9+, and ChromaDB installed.
-
-**1. Start ChromaDB**
+**3. Start ChromaDB**
+```bash
+pip install chromadb
 chroma run --path ./chroma-data
+```
 
-**2. Backend**
+**4. Start backend**
+```bash
 cd backend
 npm install
-pip install youtube-transcript-api yt-dlp chromadb
+pip install youtube-transcript-api yt-dlp
 node server.js
+```
 
-**3. Frontend**
+**5. Start frontend**
+```bash
 cd frontend
 npm install
 npm run dev
+```
 
-Open http://localhost:5173
-
----
-
-## .env.example
-GROQ_API_KEY=
-COHERE_API_KEY=
-PORT=3001
+Open http://localhost:5173, paste two URLs, hit Analyze.
 
 ---
 
 ## Known limitations
 
-- Instagram follower count not always available (Instagram blocks it)
-- Session memory is in-memory only — restarting server clears history
-- ChromaDB is local — not suitable for multi-instance deployment
+- Instagram follower count often unavailable (OAuth required)
+- Session memory is in-process only — restart clears history
+- ChromaDB is single-process — not safe for concurrent users
+- yt-dlp breaks occasionally when Instagram changes their API
+
+---
+
+## What I'd build next
+
+If this were a real product:
+- Replace Python subprocess with a proper job queue (BullMQ)
+- Add webhook support so creators paste URLs once and get 
+  notified when analysis is ready
+- Store sessions in Redis so analysis persists across visits
+- Add a proper auth layer so each creator sees only their videos
