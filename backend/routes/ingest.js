@@ -112,6 +112,20 @@ router.post('/', async (req, res) => {
       return res.status(500).json({ error: `Extraction failed for Video B: ${metadataB.error}` });
     }
 
+    // Validate that both videos have valid transcripts for RAG chat functionality
+    if (!metadataA.transcript || metadataA.transcript.trim().length === 0) {
+      const details = metadataA.transcript_error ? ` (${metadataA.transcript_error})` : ' (No subtitles or closed captions are enabled or available for this video)';
+      return res.status(400).json({ 
+        error: `Transcript missing for Video A: The RAG analyzer requires transcript/subtitle data to compare videos. Please make sure this video is public, has speech, and captions are enabled.${details}` 
+      });
+    }
+    if (!metadataB.transcript || metadataB.transcript.trim().length === 0) {
+      const details = metadataB.transcript_error ? ` (${metadataB.transcript_error})` : ' (No subtitles or closed captions are enabled or available for this video)';
+      return res.status(400).json({ 
+        error: `Transcript missing for Video B: The RAG analyzer requires transcript/subtitle data to compare videos. Please make sure this video is public, has speech, and captions are enabled.${details}` 
+      });
+    }
+
     // Chunk the transcripts
     const chunksA = chunkTranscript(metadataA.transcript || "");
     const chunksB = chunkTranscript(metadataB.transcript || "");
