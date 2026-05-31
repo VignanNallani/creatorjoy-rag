@@ -134,7 +134,6 @@ router.post('/', async (req, res) => {
       const storedMetadata = await metadataCollection.get({
         ids: ["videoA", "videoB"]
       });
-      console.log("CHROMA METADATA COLLECTION GET RESULT:", JSON.stringify(storedMetadata, null, 2));
       if (storedMetadata && storedMetadata.metadatas) {
         storedMetadata.metadatas.forEach(m => {
           if (m.video_id === 'videoA') {
@@ -202,8 +201,6 @@ ${historyText || "No previous history."}
 
 Human: ${message}
 AI:`;
-
-    console.log("COMPILED SYSTEM PROMPT:\n", systemPrompt);
 
     // 7. Call Groq with direct API call
     if (!process.env.GROQ_API_KEY) {
